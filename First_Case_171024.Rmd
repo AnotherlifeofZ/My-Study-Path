@@ -1,0 +1,280 @@
+---
+title: "First Case Study about Cyclistic "
+author: "Trung"
+date: "`r Sys.Date()`"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# BUSINESS SCENARIO
+## Task
+* Purpose: maximizing the number of annual memberships by make a marketing strategy to convert casual riders into annual members.
+* Question: 
+  - How do annual members and casual riders use Cyclistic bikes differently?
+  - Why would casual riders buy Cyclistic annual memberships?
+  - How can Cyclistic use digital media to influence casual riders to become members?
+ 
+## Stakeholders
+* Director of marketing.
+* Direct manager.
+* Marketing analytics team (my team).
+* Executive team.
+ 
+# DATA SOURCES
+The guide used the older dataset but I decided to use the newest dataset from October 2023 to September 2024 and make some difference analysis.
+
+# ANALYSYS PROCESS
+## ASK PHASE
+**Guiding question we have include:**
+* What is the problem I am trying to solve?
+ - I'm trying to find the difference in cycling habits between casual riders and annual memberships.
+* How can my insights drive business decisions?
+ - If I find out the evidence of difference between two groups, the marketing team can focus on the right target and make the right strategy.
+**Key  tasks**
+Business task and stakeholders as mentioned above.
+ 
+## PREPARE PHASE
+**Guiding question we have include:**
+* Where is my data located?
+Task: download the data and store it.
+The path to the raw_data
+```{r Location of the data} 
+raw_data_path <- "~/Chasing dreams/Learn about Data/case_study_1_151024/raw_data/"
+```
+Load needed libraries for organize and clean data
+```{r Load library}
+library(tidyverse)
+library(skimr)
+library(conflicted)
+conflict_prefer("filter", "dplyr")
+conflict_prefer("lag", "dplyr")
+```
+First, I quickly reviewed the CSV file and found that all the raw data had the same label; I could combine them by rows. Now load the data, combined them by rows:
+```{r Load the file and combined them}
+csv_files <- list.files(path = raw_data_path, pattern = ".csv", full.names = TRUE)
+raw_data <- csv_files %>% lapply(read.csv) %>% bind_rows()
+```
+I saw that the coordinate of the start and end stations were unnecessary, so I omitted them:
+```{r Omited the coordinate}
+raw_data <- raw_data %>% select(-start_lat, -start_lng, -end_lat, -end_lng)
+```
+
+* How is the data organized?
+Now take a look of the raw data:
+```{r Skim the data}
+skim_without_charts(raw_data)
+```
+First, we have 5854544 observations but we only have 5854333 ride_id, it means we have some duplicated ride_id here. And min and max length of ride_id is 16, means all the ride_id is in right format.
+```{r Clean the duplicated ride_id}
+cleaned_data <- raw_data %>% 
+  distinct(ride_id, .keep_all = TRUE)
+```
+
+We have 3 type of bike and 2 type of member type; that's ok.
+Next, we can see that the data has numerous empty fields. With a large sample, I decided to clean all the empty field:
+```{r Clean the emty and NA fields}
+cleaned_data <- cleaned_data %>%
+  filter(if_all(everything(), ~ !is.na(.x) & .x != ""))
+```
+Now let's take a look about the data after cleaned:
+```{r Review the data}
+head(cleaned_data)
+str(cleaned_data)
+skim_without_charts(cleaned_data)
+```
+The start and end station id after cleaned still have different length, it's maybe depends on how the company named their station.
+Finally we have 9 variables with 4228095 observations.
+* Are there issues with bias or credibility in this data? Does the data ROCCC?
+ - Reliable: Medium, In the scenario, the data I work on is from my own company, so it's reliable, but it still depends on how the data was collected so I vote it a Medium.
+ - Original: High, It's from the company.
+ - Comprehensive: High, It gathered all the data so it's high comprehensive.
+ - Current: High, I took the lastest 12 month of data.
+ - Cited: high. We have the license to use the data.
+
+* How am I addressing licensing, privacy, security, and accessibility?
+The data is from my own company, so I have the license and follow the company's principles regarding privacy, security and accessibility.
+* How did I verify the data's integrity?
+As I did, the data is missing various fields, but I cleaned them and only used data with full variables.
+* How does it help me answer my question?
+The data provide customer information; I can get insights into their cycling habit by analysing them.
+* Are there any problems with the data?
+Some fields are missing, and I think the data needs customer ID variables for information about how a specific customer uses the service.
+
+## PROCESS PHASE
+**Guiding questions**
+* What tool did I use?
+It's R, ofcourse.
+* Have I ensured data's inegrity?
+Yes, I have.
+* What steps have I taken to ensure that my data is clean?
+I mentioned above.
+* How can I verify that data is clean and ready to analyze?
+I tried best and if anybody find out any problems, please tell me.
+* Have I documented my cleaning process?
+Yes, here it is.
+
+Create some variables for the analyze, include ride length, and week day and time when start (hour), we also turn ride length and time in day to numeric :
+```{r}
+cleaned_data$started_at <- as.POSIXct(cleaned_data$started_at, format = "%Y-%m-%d %H:%M:%S")
+cleaned_data$ended_at <- as.POSIXct(cleaned_data$ended_at, format = "%Y-%m-%d %H:%M:%S")
+cleaned_data <- cleaned_data %>% mutate(ride_length = difftime(ended_at,started_at))
+cleaned_data$ride_length <- as.numeric(cleaned_data$ride_length)
+cleaned_data <- cleaned_data %>% mutate(day_of_week = format.Date(started_at, format = "%A"))
+cleaned_data <- cleaned_data %>% mutate(time_in_day = format(started_at, format = "%H"))
+cleaned_data$time_in_day <- as.numeric(cleaned_data$time_in_day)
+```
+ Let's take look about the new variables:
+```{r}
+cleaned_data %>% select(ride_length, day_of_week, time_in_day) %>% skim_without_charts()
+```
+
+Now we see there are rides that ride length <= 0, we cleaned it:
+```{r}
+cleaned_data <- filter(cleaned_data, cleaned_data$ride_length > 0)
+
+```
+And change the order of day_of_week and member_casual (to make a better visualization results):
+```{r}
+cleaned_data$day_of_week <- ordered(cleaned_data$day_of_week, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+cleaned_data$member_casual <- factor(cleaned_data$member_casual, levels = c("member", "casual"))
+```
+
+Now let's take a look about ride_length variable;
+```{r}
+skim_without_charts(cleaned_data$ride_length)
+```
+
+The table shows that the mean ride length is 992.1232, but the standard deviation is over 2136, which seems weird. Now we see the 75% quantile is 1084, but the maximum value is 90562. The ride length unit is seconds. Let's explore the distribution of the data. 
+```{r}
+quantile(cleaned_data$ride_length, probs = c(0.8, 0.9, 0.99, 0.999), na.rm = FALSE, names = TRUE)
+```
+The 99.9% quantile of the data is still far from the maximum value. We have a tiny group of customer who use the bike in a long time, I decided to clean them out.
+The data indicate that most people (99%) use Cyclistic to short trip below 6209 seconds (below 2 hours/ 7200 secs) and the other use it for longer trip.
+
+Let's count how many customers use the bike over 2 hours (7200 sec):
+```{r}
+cleaned_data %>% filter(ride_length >= 7200) %>% group_by(member_casual) %>% count()
+```
+We have about 30000 people from both group have used the bike over 2 hours a day. This group won't belong to this case, maybe will be helpful for another segment, so we clean them. We focus on the customer group that use Cyclistic for clearly transportation purpose. 
+```{r}
+cleaned_data <- cleaned_data %>% filter(cleaned_data$ride_length <= 7200)
+```
+Take a look about ride length now:
+```{r}
+skim_without_charts(cleaned_data$ride_length)
+```
+Now, the data looks cleaner. We still have the group that used bikes for less than 1 minute. It's biased here, but we aren't sure that it's a mistake or that the customer uses it for short rides. So, we accept this bias.
+
+
+## ANALYZE PHASE
+**Guiding questions**
+* How should I organize data to perform analysis on it?
+* Have the data been properly formatted?
+Let's take a look
+```{r}
+str(cleaned_data)
+```
+The data is well formatted.
+* What surprises did I discover?
+* What trends or relationships did I find?
+* How these insights help answer the business questions?
+**Key tasks**
+Let's aggregate some data.
+```{r}
+cleaned_data %>% 
+  aggregate(ride_length~member_casual, FUN = mean) 
+cleaned_data %>% 
+  aggregate(ride_length~member_casual, FUN = median)
+```
+**Annual membership users has shorter trip in average and median than the casual user.**
+Let's find out the average trip between user types by weekday.
+
+```{r}
+mean_ride_length_by_week_day <- cleaned_data %>% 
+  aggregate(ride_length~member_casual+day_of_week, FUN = mean) 
+```
+**We see that average ride length of membership users is shorter than casual users every day of week.**
+We count total ride by user types and weekday:
+```{r}
+total_ride_by_week_day <- cleaned_data %>% 
+  count(day_of_week, member_casual)
+total_ride_by_week_day <- total_ride_by_week_day %>%
+  pivot_wider(names_from = day_of_week, values_from = n)
+```
+
+Next we count the bike type that used by two user types.
+```{r}
+bike_type_and_member <- cleaned_data %>% 
+  group_by(rideable_type,member_casual) %>% summarise(number_of_rides = n(), .groups = "drop")
+bike_type_and_member <- bike_type_and_member %>% 
+  pivot_wider(names_from = member_casual, values_from = number_of_rides)
+```
+
+## SHARE PHASE
+**Guiding questions**
+* Were you able to answer the question of how annual members and casual drivers use Cyclistic bikes differently?
+* What story does the data tell?
+* How the findings relate to original question?
+* Who is the audience? What is the best way to communicate with them?
+* Can data visualiztion help share the findings?
+* Is the presentation accessible to the audience?
+**Key tasks**
+Let's make some graphs to visualize the findings.
+Make a graph about average ride length by user types and week day.
+
+```{r}
+ggplot(mean_ride_length_by_week_day) + geom_col(mapping = aes(x = day_of_week, y= ride_length, fill = member_casual), position = "dodge") +
+  labs(title = "Mean Ride Length by Day of Week (Member vs Casual)", x = "Day", y = "Number of Rides", fill = "User Type") + 
+  scale_y_continuous(labels = scales::label_number()) +   theme_minimal()
+```
+The graph indicates that annual members maintain consistent travel distances on weekdays, with a slight increase during the weekends, though the variation remains minimal. The casual members' group exhibits a higher average travel distance compared to annual users on a daily basis, with a clear trend of shorter distances during midweek and longer distances over the weekends.
+What is the distribution of total rides by weekday and user types?
+Let's see it.
+```{r}
+ggplot(cleaned_data) + geom_bar(mapping = aes(x = day_of_week, fill = member_casual), position = "dodge") +
+  labs(title = "Numbers of Rides by Day of Week", x = "Day", y = "Number of Rides", fill = "User Type") + 
+  scale_y_continuous(labels = scales::label_number()) +   theme_minimal()
+```
+* Members dominate weekdays:
+From Monday to Friday, annual members have a significantly higher number of rides compared to casual riders. The peak for members appears to be on Wednesday, while Friday has the fewest rides among the weekdays.
+* Casual riders increase on weekends:
+Casual riders show a noticeable increase in the number of rides on the weekends (Saturday and Sunday), almost matching or exceeding the number of rides taken by annual members on those days.
+* Weekend vs. weekday trend:
+While annual members maintain a relatively consistent number of rides on weekdays, their weekend rides slightly decrease.
+Conversely, casual riders follow a different pattern, with fewer rides during the week and a significant rise during the weekend, particularly on Saturday.
+* Overall pattern:
+Casual riders tend to use the service more on weekends, possibly indicating recreational usage.
+Members use the service consistently throughout the week, suggesting more regular, possibly work-related commutes.
+
+Let's see total rides by time in day with two groups:
+```{r}
+ggplot(cleaned_data) + 
+       geom_histogram(mapping = aes(x = time_in_day, fill = member_casual), binwidth = 1, position = "identity") + 
+       facet_wrap(~day_of_week) +
+       labs(title = "Number of Rides by Time of Day (Member vs Casual)",
+       x = "Time of Day (Hour)",
+       y = "Number of Rides",
+       fill = "User Type") +
+  theme_minimal()
+```
+We see that membership user rides most at the start and end of working times, so the bike is used mostly for work. Some of casual members have that trend too.
+Now we analyze the bike types with user type and day of week.
+```{r}
+ggplot(cleaned_data) + geom_bar(mapping = aes(x = rideable_type, fill = member_casual), position = "dodge") +
+  labs(title = "Numbers of Biketype used by User Type", x = "Bike Type", y = "Number of Rides", fill = "User Type") + 
+  scale_y_continuous(labels = scales::label_number()) +   theme_minimal()
+ggplot(cleaned_data) + geom_bar(mapping = aes(x = day_of_week, fill = rideable_type), position = "dodge") +
+  labs(title = "Numbers of Biketype used by Day of Week", x = "Day", y = "Number of Rides", fill = "Type of bike") + 
+  scale_y_continuous(labels = scales::label_number()) + theme_minimal()
+```
+Classic Bikes are the most preferred option among users, showing the highest usage rates.
+Electric Scooters rank as the least preferred mode of transportation, with significantly lower user adoption.
+Electric Bikes are utilized at approximately half the rate of Classic Bikes, indicating a moderate level of preference in comparison. 
+The daily used pattern remains consistent.
+
+
+## ACT PHASE
+We see that the marketing strategy can focus on the casual users who use Cyclistic for work and encourage them to become annual members. Be sure that the company has enough classic bikes.
